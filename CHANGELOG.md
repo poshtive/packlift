@@ -6,6 +6,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Keep future changes and upcoming improvements here.
+
+## [1.0.1] - 2026-07-13
+
 ### Fixed
 
 - Preserve Composer OR branches, wildcard shape, and stability flags when rewriting constraints (#1).
@@ -30,5 +36,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Use `extra.packlift.exclude` for persistent package exclusions.
 - Use Packlift-specific cache directories and `PACKLIFT_CACHE_DIR` for cache overrides.
 
-[Unreleased]: https://github.com/poshtive/packlift/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/poshtive/packlift/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/poshtive/packlift/releases/tag/v1.0.1
 [1.0.0]: https://github.com/poshtive/packlift/releases/tag/v1.0.0

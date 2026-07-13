@@ -1,13 +1,14 @@
 # packlift
 
-A [taze](https://github.com/antfu/taze)-like CLI for updating `composer.json` dependencies.
+A focused CLI for inspecting and updating outdated Composer dependencies.
 
 ## Features
 
-- 🔍 Check for outdated dependencies in `composer.json`
+- 🔍 Discover outdated dependencies in `composer.json`
 - 📊 Colored output: Major (red), Minor (cyan), Patch (green)
 - ⏱️ Version age display (e.g., "2 d", "3 mo")
 - 🎯 Respects `minimum-stability` and `prefer-stable`
+- 🐘 Checks package PHP compatibility before suggesting updates
 - 🚫 Major updates hidden by default
 - ✍️ Interactive selection mode
 - ⚠️ Detects deprecated packages
@@ -124,6 +125,10 @@ bun test
 # Build for publishing
 bun run build
 ```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and upcoming changes.
 
 ## License
 

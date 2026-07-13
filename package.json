@@ -1,8 +1,8 @@
 {
   "name": "packlift",
   "version": "1.0.0",
-  "description": "A taze-like CLI for updating composer.json dependencies",
-  "author": "qoqn",
+  "description": "A CLI for inspecting and updating outdated Composer dependencies",
+  "author": "Poshtive",
   "license": "MIT",
   "keywords": [
     "composer",
@@ -10,7 +10,8 @@
     "dependencies",
     "update",
     "cli",
-    "taze"
+    "packagist",
+    "outdated"
   ],
   "type": "module",
   "main": "./dist/cli.mjs",
@@ -33,7 +34,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/qoqn/packlift.git"
+    "url": "git+https://github.com/poshtive/packlift.git"
   },
   "devDependencies": {
     "@types/bun": "latest",

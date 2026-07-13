@@ -9,6 +9,9 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "moduleResolution": "bundler",
+    "types": [
+      "bun"
+    ],
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,

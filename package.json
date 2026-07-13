@@ -26,6 +26,7 @@
   "scripts": {
     "dev": "bun run src/cli.ts",
     "build": "bun build src/cli.ts --outfile dist/cli.mjs --target node",
+    "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build",
     "test": "bun test"
   },

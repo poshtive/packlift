@@ -1,11 +1,18 @@
 import { resolve } from 'path';
 import pc from 'picocolors';
 import type { PackageInfo, CLIOptions, Stability, DeprecatedPackage } from './types';
-import { fetchAllPackages } from './fetcher';
+import { fetchAllPackagesDetailed } from './fetcher';
 import { readComposerJson, writeComposerJson, runComposerUpdate } from './writer';
 import { getDiffType } from './utils/version';
 import { formatAge, getAgeMonths } from './utils/time';
-import { renderHeader, renderTable, renderFooter, renderDeprecated } from './ui/render';
+import {
+  renderHeader,
+  renderTable,
+  renderFooter,
+  renderDeprecated,
+  renderFetchFailures,
+  renderStaleCache,
+} from './ui/render';
 import { selectPackages } from './interactive';
 import { getComposerExcludeList, mergeExcludeLists, filterComposerPackages } from './config';
 import pkg from '../package.json';
@@ -41,7 +48,7 @@ export async function run(options: CLIOptions): Promise<void> {
 
   const projectPhp = allPackages['php'];
 
-  const results = await fetchAllPackages(
+  const fetchBatch = await fetchAllPackagesDetailed(
     filteredPackages,
     minStability,
     preferStable,
@@ -49,6 +56,7 @@ export async function run(options: CLIOptions): Promise<void> {
     options.noCache,
     projectPhp,
   );
+  const results = fetchBatch.results;
 
   const updates: PackageInfo[] = [];
   const deprecatedPackages: DeprecatedPackage[] = [];
@@ -94,8 +102,12 @@ export async function run(options: CLIOptions): Promise<void> {
   const order = { major: 0, minor: 1, patch: 2 };
   updates.sort((a, b) => order[a.diffType] - order[b.diffType]);
 
-  renderTable(updates);
+  if (updates.length > 0 || fetchBatch.failures.length === 0) {
+    renderTable(updates);
+  }
   renderDeprecated(deprecatedPackages);
+  renderFetchFailures(fetchBatch.failures);
+  renderStaleCache(fetchBatch.stalePackages);
 
   if (updates.length === 0) return;
 

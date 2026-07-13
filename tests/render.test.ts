@@ -5,8 +5,10 @@ import {
   renderFooter,
   formatPackageChoice,
   renderDeprecated,
+  renderFetchFailures,
+  renderStaleCache,
 } from '../src/ui/render';
-import type { PackageInfo, DeprecatedPackage } from '../src/types';
+import type { PackageInfo, DeprecatedPackage, FetchFailure } from '../src/types';
 
 describe('formatPackageChoice', () => {
   test('formats major update correctly', () => {
@@ -225,6 +227,42 @@ describe('renderDeprecated', () => {
     const spy = spyOn(console, 'log');
     renderDeprecated([]);
     expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe('renderFetchFailures', () => {
+  test('renders concise fetch diagnostics', () => {
+    const logs: string[] = [];
+    const spy = spyOn(console, 'log').mockImplementation((message?: string) => {
+      if (typeof message === 'string') logs.push(message);
+    });
+
+    const failures: FetchFailure[] = [
+      { packageName: 'vendor/package', reason: 'timeout', message: 'request timed out' },
+    ];
+
+    renderFetchFailures(failures);
+
+    expect(logs.join('\n')).toContain('vendor/package');
+    expect(logs.join('\n')).toContain('timed out');
+
+    spy.mockRestore();
+  });
+});
+
+describe('renderStaleCache', () => {
+  test('renders stale cache usage', () => {
+    const logs: string[] = [];
+    const spy = spyOn(console, 'log').mockImplementation((message?: string) => {
+      if (typeof message === 'string') logs.push(message);
+    });
+
+    renderStaleCache(['vendor/package']);
+
+    expect(logs.join('\n')).toContain('vendor/package');
+    expect(logs.join('\n')).toContain('cached');
+
     spy.mockRestore();
   });
 });

@@ -1,13 +1,21 @@
 import semver from 'semver';
-import type { PackagistVersion, Stability } from './types';
+import type {
+  FetchFailure,
+  FetchFailureReason,
+  PackagistResponse,
+  PackagistVersion,
+  Stability,
+} from './types';
 import { STABILITY_ORDER } from './types';
 import { getVersionStability, normalizeVersion } from './utils/version';
 import { getCacheEntry, setCache, touchCache, type CacheEntry } from './cache';
 import { checkPhpCompatibility } from './utils/php';
 
 const PACKAGIST_API = 'https://repo.packagist.org/p2';
-
 const CACHE_VERSION = 1;
+const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_RETRY_DELAY_MS = 250;
 
 export interface FetchResult {
   latestVersion: string;
@@ -21,18 +29,178 @@ export interface FetchResult {
   require?: Record<string, string>;
 }
 
-interface PackagistResponse {
-  packages?: Record<string, PackagistVersion[]>;
+export interface FetchRequestOptions {
+  timeoutMs?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+}
+
+export interface FetchPackageOutcome {
+  result: FetchResult | null;
+  failure?: FetchFailure;
+  usedStaleCache?: boolean;
+}
+
+export interface FetchBatchResult {
+  results: Map<string, FetchResult>;
+  failures: FetchFailure[];
+  stalePackages: string[];
+}
+
+interface PackagistRequestSuccess {
+  data?: PackagistResponse;
+  notModified?: boolean;
+  headers?: Headers;
+}
+
+interface PackagistRequestFailure {
+  failure: FetchFailure;
+}
+
+type PackagistRequestResult = PackagistRequestSuccess | PackagistRequestFailure;
+
+function createFailure(
+  packageName: string,
+  reason: FetchFailureReason,
+  message: string,
+): FetchFailure {
+  return { packageName, reason, message };
+}
+
+function isRetryableReason(reason: FetchFailureReason): boolean {
+  return reason === 'timeout' || reason === 'network' || reason === 'rate-limited' || reason === 'server-error';
+}
+
+function isPackagistResponse(value: unknown): value is PackagistResponse {
+  if (!value || typeof value !== 'object') return false;
+
+  const packages = (value as { packages?: unknown }).packages;
+  return Boolean(packages && typeof packages === 'object' && !Array.isArray(packages));
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'network request failed';
+}
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
+
+function getRetryDelay(response: Response, defaultDelay: number): number {
+  const retryAfter = response.headers.get('Retry-After');
+  if (!retryAfter) return defaultDelay;
+
+  const seconds = Number(retryAfter);
+  if (!Number.isFinite(seconds)) return defaultDelay;
+
+  return Math.min(10_000, Math.max(0, seconds * 1_000));
+}
+
+async function wait(delayMs: number): Promise<void> {
+  if (delayMs <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function requestPackagist(
+  packageName: string,
+  url: string,
+  headers: Record<string, string>,
+  options: FetchRequestOptions,
+): Promise<PackagistRequestResult> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxRetries = Math.max(0, options.maxRetries ?? DEFAULT_MAX_RETRIES);
+  const retryDelayMs = Math.max(0, options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS);
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, { headers, signal: controller.signal });
+
+      if (response.status === 304) {
+        return { notModified: true };
+      }
+
+      if (response.ok) {
+        let body: unknown;
+        try {
+          body = await response.json();
+        } catch {
+          return {
+            failure: createFailure(
+              packageName,
+              'invalid-response',
+              'Packagist returned invalid JSON',
+            ),
+          };
+        }
+
+        if (!isPackagistResponse(body)) {
+          return {
+            failure: createFailure(
+              packageName,
+              'invalid-response',
+              'Packagist returned an unexpected response shape',
+            ),
+          };
+        }
+
+        return { data: body, headers: response.headers };
+      }
+
+      const reason: FetchFailureReason =
+        response.status === 429
+          ? 'rate-limited'
+          : response.status >= 500
+            ? 'server-error'
+            : response.status === 404
+              ? 'not-found'
+              : 'http-error';
+      const failure = createFailure(
+        packageName,
+        reason,
+        `Packagist returned HTTP ${response.status}`,
+      );
+
+      if (isRetryableReason(reason) && attempt < maxRetries) {
+        await wait(getRetryDelay(response, retryDelayMs));
+        continue;
+      }
+
+      return { failure };
+    } catch (error) {
+      const reason: FetchFailureReason = isAbortError(error) ? 'timeout' : 'network';
+      const failure = createFailure(
+        packageName,
+        reason,
+        isAbortError(error) ? `Request timed out after ${timeoutMs} ms` : getErrorMessage(error),
+      );
+
+      if (attempt < maxRetries) {
+        await wait(retryDelayMs);
+        continue;
+      }
+
+      return { failure };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  return {
+    failure: createFailure(packageName, 'network', 'network request failed'),
+  };
+}
+
+function canUseStaleCache(failure: FetchFailure): boolean {
+  return isRetryableReason(failure.reason);
 }
 
 /**
- * Fetches package metadata from the Packagist V2 API.
- *
- * @param packageName - Package name in "vendor/package" format
- * @param minStability - Minimum stability level to consider (default: 'stable')
- * @param preferStable - Prefer stable versions when available (default: true)
+ * Fetches package metadata and retains the reason when retrieval fails.
  */
-export async function fetchPackage(
+export async function fetchPackageDetailed(
   packageName: string,
   minStability: Stability = 'stable',
   preferStable: boolean = true,
@@ -40,9 +208,9 @@ export async function fetchPackage(
   allowMajor: boolean = true,
   noCache: boolean = false,
   projectPhp?: string,
-): Promise<FetchResult | null> {
+  requestOptions: FetchRequestOptions = {},
+): Promise<FetchPackageOutcome> {
   const cacheKey = packageName.replace('/', '_');
-
   let cachedEntry: CacheEntry<PackagistResponse> | null = null;
   const headers: Record<string, string> = {};
 
@@ -56,49 +224,81 @@ export async function fetchPackage(
     }
   }
 
-  let data: PackagistResponse;
-
   try {
     const url = `${PACKAGIST_API}/${packageName}.json`;
-    const response = await fetch(url, { headers });
+    const request = await requestPackagist(packageName, url, headers, requestOptions);
+    let data: PackagistResponse;
+    let usedStaleCache = false;
 
-    if (response.status === 304 && cachedEntry) {
-      await touchCache(cacheKey, CACHE_VERSION);
+    if ('notModified' in request && request.notModified) {
+      if (!cachedEntry) {
+        return {
+          result: null,
+          failure: createFailure(packageName, 'invalid-response', 'Packagist returned 304 without cached metadata'),
+        };
+      }
       data = cachedEntry.value;
-    } else if (response.ok) {
-      data = (await response.json()) as PackagistResponse;
+      await touchCache(cacheKey, CACHE_VERSION);
+    } else if ('data' in request && request.data) {
+      data = request.data;
       if (!noCache) {
-        const lastModified = response.headers.get('Last-Modified') || undefined;
-        const etag = response.headers.get('ETag') || undefined;
+        const lastModified = request.headers?.get('Last-Modified') || undefined;
+        const etag = request.headers?.get('ETag') || undefined;
         await setCache(cacheKey, data, CACHE_VERSION, { lastModified, etag });
       }
+    } else if ('failure' in request && cachedEntry && canUseStaleCache(request.failure)) {
+      data = cachedEntry.value;
+      usedStaleCache = true;
+    } else if ('failure' in request) {
+      return { result: null, failure: request.failure };
     } else {
-      return null;
+      return {
+        result: null,
+        failure: createFailure(packageName, 'invalid-response', 'Packagist returned no metadata'),
+      };
     }
 
-    const versions: PackagistVersion[] = data.packages?.[packageName] ?? [];
+    const rawVersions = data.packages?.[packageName];
+    if (rawVersions !== undefined && !Array.isArray(rawVersions)) {
+      return {
+        result: null,
+        failure: createFailure(packageName, 'invalid-response', 'Packagist returned invalid package versions'),
+      };
+    }
 
-    if (versions.length === 0) return null;
+    const versions: PackagistVersion[] = rawVersions ?? [];
+    if (versions.length === 0) {
+      return {
+        result: null,
+        failure: createFailure(packageName, 'no-versions', 'No package versions were found in Packagist metadata'),
+      };
+    }
 
     const minLevel = STABILITY_ORDER[minStability];
-
-    const eligibleVersions = versions.filter((v) => {
-      const stability = getVersionStability(v.version);
-      const level = STABILITY_ORDER[stability];
-      return level >= minLevel;
+    const eligibleVersions = versions.filter((version) => {
+      const stability = getVersionStability(version.version);
+      return STABILITY_ORDER[stability] >= minLevel;
     });
 
     if (eligibleVersions.length === 0) {
       const first = versions[0];
-      if (!first) return null;
-      return { latestVersion: first.version, releaseTime: first.time };
+      if (!first) {
+        return {
+          result: null,
+          failure: createFailure(packageName, 'no-versions', 'No eligible package versions were found'),
+        };
+      }
+      return {
+        result: { latestVersion: first.version, releaseTime: first.time },
+        usedStaleCache,
+      };
     }
 
     let selectedVersion: PackagistVersion | null = null;
 
     if (preferStable) {
       const stableVersions = eligibleVersions.filter(
-        (v) => getVersionStability(v.version) === 'stable',
+        (version) => getVersionStability(version.version) === 'stable',
       );
       if (stableVersions.length > 0) {
         selectedVersion = stableVersions[0] ?? null;
@@ -109,7 +309,12 @@ export async function fetchPackage(
       selectedVersion = eligibleVersions[0] ?? null;
     }
 
-    if (!selectedVersion) return null;
+    if (!selectedVersion) {
+      return {
+        result: null,
+        failure: createFailure(packageName, 'no-versions', 'No eligible package versions were found'),
+      };
+    }
 
     let phpIncompatible = false;
     let skippedVersion: string | undefined;
@@ -121,12 +326,12 @@ export async function fetchPackage(
         skippedVersion = selectedVersion.version;
 
         const versionsToCheck = preferStable
-          ? eligibleVersions.filter((v) => getVersionStability(v.version) === 'stable')
+          ? eligibleVersions.filter((version) => getVersionStability(version.version) === 'stable')
           : eligibleVersions;
 
-        const compatibleVersion = versionsToCheck.find((v) => {
-          if (!v.require?.php) return true;
-          return checkPhpCompatibility(projectPhp, v.require.php).satisfied;
+        const compatibleVersion = versionsToCheck.find((version) => {
+          if (!version.require?.php) return true;
+          return checkPhpCompatibility(projectPhp, version.require.php).satisfied;
         });
 
         if (compatibleVersion && compatibleVersion !== selectedVersion) {
@@ -151,11 +356,11 @@ export async function fetchPackage(
 
           if (!allowMajor) {
             const versionsToCheck = preferStable
-              ? eligibleVersions.filter((v) => getVersionStability(v.version) === 'stable')
+              ? eligibleVersions.filter((version) => getVersionStability(version.version) === 'stable')
               : eligibleVersions;
 
-            const sameMajorVersion = versionsToCheck.find((v) => {
-              const norm = normalizeVersion(v.version);
+            const sameMajorVersion = versionsToCheck.find((version) => {
+              const norm = normalizeVersion(version.version);
               return norm && semver.major(norm) === currentMajor;
             });
 
@@ -167,10 +372,7 @@ export async function fetchPackage(
       }
     }
 
-    const deprecatedInfo: {
-      deprecated?: boolean;
-      replacement?: string;
-    } = {};
+    const deprecatedInfo: { deprecated?: boolean; replacement?: string } = {};
 
     if (typeof selectedVersion.abandoned === 'string') {
       deprecatedInfo.deprecated = true;
@@ -179,30 +381,102 @@ export async function fetchPackage(
       deprecatedInfo.deprecated = true;
     }
 
-    const result: FetchResult = {
-      latestVersion: selectedVersion.version,
-      releaseTime: selectedVersion.time,
-      phpRequirement: selectedVersion.require?.php ?? phpRequirement,
-      majorVersion: majorDetected,
-      deprecated: deprecatedInfo.deprecated,
-      replacement: deprecatedInfo.replacement,
-      phpIncompatible: phpIncompatible || undefined,
-      skippedVersion,
-      require: selectedVersion.require,
+    return {
+      result: {
+        latestVersion: selectedVersion.version,
+        releaseTime: selectedVersion.time,
+        phpRequirement: selectedVersion.require?.php ?? phpRequirement,
+        majorVersion: majorDetected,
+        deprecated: deprecatedInfo.deprecated,
+        replacement: deprecatedInfo.replacement,
+        phpIncompatible: phpIncompatible || undefined,
+        skippedVersion,
+        require: selectedVersion.require,
+      },
+      usedStaleCache,
     };
-
-    return result;
-  } catch {
-    return null;
+  } catch (error) {
+    return {
+      result: null,
+      failure: createFailure(packageName, 'network', getErrorMessage(error)),
+    };
   }
 }
 
 /**
- * Fetches updates for all packages in parallel with concurrency control.
- *
- * @param packages - Map of package names to current versions
- * @param minStability - Minimum stability level
- * @param preferStable - Prefer stable versions
+ * Fetches package metadata from the Packagist V2 API.
+ */
+export async function fetchPackage(
+  packageName: string,
+  minStability: Stability = 'stable',
+  preferStable: boolean = true,
+  currentVersion?: string,
+  allowMajor: boolean = true,
+  noCache: boolean = false,
+  projectPhp?: string,
+  requestOptions: FetchRequestOptions = {},
+): Promise<FetchResult | null> {
+  const outcome = await fetchPackageDetailed(
+    packageName,
+    minStability,
+    preferStable,
+    currentVersion,
+    allowMajor,
+    noCache,
+    projectPhp,
+    requestOptions,
+  );
+  return outcome.result;
+}
+
+/**
+ * Fetches updates for all packages with bounded concurrency and diagnostics.
+ */
+export async function fetchAllPackagesDetailed(
+  packages: Record<string, string>,
+  minStability: Stability = 'stable',
+  preferStable: boolean = true,
+  allowMajor: boolean = true,
+  noCache: boolean = false,
+  projectPhp?: string,
+  requestOptions: FetchRequestOptions = {},
+): Promise<FetchBatchResult> {
+  const results = new Map<string, FetchResult>();
+  const failures: FetchFailure[] = [];
+  const stalePackages: string[] = [];
+  const entries = Object.entries(packages);
+  const CONCURRENCY = 5;
+
+  for (let i = 0; i < entries.length; i += CONCURRENCY) {
+    const batch = entries.slice(i, i + CONCURRENCY);
+    const outcomes = await Promise.all(
+      batch.map(async ([name, version]) => ({
+        name,
+        outcome: await fetchPackageDetailed(
+          name,
+          minStability,
+          preferStable,
+          version,
+          allowMajor,
+          noCache,
+          projectPhp,
+          requestOptions,
+        ),
+      })),
+    );
+
+    for (const { name, outcome } of outcomes) {
+      if (outcome.result) results.set(name, outcome.result);
+      if (outcome.failure) failures.push(outcome.failure);
+      if (outcome.usedStaleCache) stalePackages.push(name);
+    }
+  }
+
+  return { results, failures, stalePackages };
+}
+
+/**
+ * Backwards-compatible map-only wrapper for callers that do not need diagnostics.
  */
 export async function fetchAllPackages(
   packages: Record<string, string>,
@@ -211,27 +485,16 @@ export async function fetchAllPackages(
   allowMajor: boolean = true,
   noCache: boolean = false,
   projectPhp?: string,
+  requestOptions: FetchRequestOptions = {},
 ): Promise<Map<string, FetchResult>> {
-  const results = new Map<string, FetchResult>();
-  const entries = Object.entries(packages);
-  const CONCURRENCY = 5;
-
-  for (let i = 0; i < entries.length; i += CONCURRENCY) {
-    const batch = entries.slice(i, i + CONCURRENCY);
-    const promises = batch.map(async ([name, version]) => {
-      const result = await fetchPackage(
-        name,
-        minStability,
-        preferStable,
-        version,
-        allowMajor,
-        noCache,
-        projectPhp,
-      );
-      if (result) results.set(name, result);
-    });
-    await Promise.all(promises);
-  }
-
-  return results;
+  const batch = await fetchAllPackagesDetailed(
+    packages,
+    minStability,
+    preferStable,
+    allowMajor,
+    noCache,
+    projectPhp,
+    requestOptions,
+  );
+  return batch.results;
 }

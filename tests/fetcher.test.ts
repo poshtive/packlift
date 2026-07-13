@@ -3,7 +3,7 @@ import { setCache, getCacheEntry } from '../src/cache';
 import path from 'node:path';
 import os from 'node:os';
 import type { Stability } from '../src/types';
-import { fetchPackage, fetchAllPackages } from '../src/fetcher';
+import { fetchPackage, fetchPackageDetailed, fetchAllPackages, fetchAllPackagesDetailed } from '../src/fetcher';
 
 const NO_CACHE = true;
 
@@ -387,6 +387,132 @@ describe('fetchPackage', () => {
     expect(result?.phpIncompatible).toBe(true);
     expect(result?.skippedVersion).toBe('2.0.0');
   });
+
+  test('times out and reports a bounded request failure', async () => {
+    // @ts-expect-error
+    globalThis.fetch = mock((_: string, init: RequestInit) =>
+      new Promise((_, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          reject(Object.assign(new Error('request aborted'), { name: 'AbortError' }));
+        });
+      }),
+    );
+
+    const outcome = await fetchPackageDetailed(
+      'vendor/timeout-package',
+      'stable',
+      true,
+      undefined,
+      true,
+      true,
+      undefined,
+      { timeoutMs: 5, maxRetries: 0, retryDelayMs: 0 },
+    );
+
+    expect(outcome.result).toBeNull();
+    expect(outcome.failure?.reason).toBe('timeout');
+  });
+
+  test('retries a transient HTTP failure', async () => {
+    let callCount = 0;
+    // @ts-expect-error
+    globalThis.fetch = mock(() => {
+      callCount++;
+      if (callCount <= 2) {
+        return Promise.resolve({
+          ok: false,
+          status: callCount === 1 ? 429 : 503,
+          headers: new Map(),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Map(),
+        json: () =>
+          Promise.resolve({
+            packages: {
+              'vendor/retry-package': [
+                { version: '1.0.0', time: '2024-01-01T12:00:00+00:00' },
+              ],
+            },
+          }),
+      });
+    });
+
+    const outcome = await fetchPackageDetailed(
+      'vendor/retry-package',
+      'stable',
+      true,
+      undefined,
+      true,
+      true,
+      undefined,
+      { timeoutMs: 5, maxRetries: 2, retryDelayMs: 0 },
+    );
+
+    expect(callCount).toBe(3);
+    expect(outcome.failure).toBeUndefined();
+    expect(outcome.result?.latestVersion).toBe('1.0.0');
+  });
+
+  test('uses stale cache when the network is unavailable', async () => {
+    await setCache(
+      'vendor_stale-package',
+      {
+        packages: {
+          'vendor/stale-package': [
+            { version: '1.2.0', time: '2024-01-01T12:00:00+00:00' },
+          ],
+        },
+      },
+      1,
+    );
+
+    // @ts-expect-error
+    globalThis.fetch = mock(() => Promise.reject(new Error('offline')));
+
+    const outcome = await fetchPackageDetailed(
+      'vendor/stale-package',
+      'stable',
+      true,
+      undefined,
+      true,
+      false,
+      undefined,
+      { timeoutMs: 5, maxRetries: 0, retryDelayMs: 0 },
+    );
+
+    expect(outcome.failure).toBeUndefined();
+    expect(outcome.usedStaleCache).toBe(true);
+    expect(outcome.result?.latestVersion).toBe('1.2.0');
+  });
+
+  test('reports malformed Packagist responses', async () => {
+    // @ts-expect-error
+    globalThis.fetch = mock(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Map(),
+        json: () => Promise.resolve({ unexpected: true }),
+      }),
+    );
+
+    const outcome = await fetchPackageDetailed(
+      'vendor/malformed-package',
+      'stable',
+      true,
+      undefined,
+      true,
+      true,
+      undefined,
+      { timeoutMs: 5, maxRetries: 0, retryDelayMs: 0 },
+    );
+
+    expect(outcome.result).toBeNull();
+    expect(outcome.failure?.reason).toBe('invalid-response');
+  });
 });
 
 describe('fetchAllPackages', () => {
@@ -466,5 +592,50 @@ describe('fetchAllPackages', () => {
   test('returns empty map for empty input', async () => {
     const results = await fetchAllPackagesNoCache({});
     expect(results.size).toBe(0);
+  });
+
+  test('returns partial results and diagnostics for failed packages', async () => {
+    // @ts-expect-error
+    globalThis.fetch = mock((url: string) => {
+      if (url.includes('vendor/failed-package')) {
+        return Promise.resolve({ ok: false, status: 503, headers: new Map() });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Map(),
+        json: () =>
+          Promise.resolve({
+            packages: {
+              'vendor/healthy-package': [
+                { version: '1.0.0', time: '2024-01-01T12:00:00+00:00' },
+              ],
+            },
+          }),
+      });
+    });
+
+    const batch = await fetchAllPackagesDetailed(
+      {
+        'vendor/failed-package': '^1.0',
+        'vendor/healthy-package': '^1.0',
+      },
+      'stable',
+      true,
+      true,
+      true,
+      undefined,
+      { timeoutMs: 5, maxRetries: 0, retryDelayMs: 0 },
+    );
+
+    expect(batch.results.size).toBe(1);
+    expect(batch.results.has('vendor/healthy-package')).toBe(true);
+    expect(batch.failures).toEqual([
+      expect.objectContaining({
+        packageName: 'vendor/failed-package',
+        reason: 'server-error',
+      }),
+    ]);
   });
 });

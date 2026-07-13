@@ -88,6 +88,22 @@ export interface PackagistResponse {
   };
 }
 
+export type FetchFailureReason =
+  | 'timeout'
+  | 'network'
+  | 'rate-limited'
+  | 'server-error'
+  | 'http-error'
+  | 'not-found'
+  | 'invalid-response'
+  | 'no-versions';
+
+export interface FetchFailure {
+  packageName: string;
+  reason: FetchFailureReason;
+  message: string;
+}
+
 /**
  * Parsed composer.json structure
  */

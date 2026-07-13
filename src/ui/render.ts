@@ -1,5 +1,5 @@
 import pc from 'picocolors';
-import type { PackageInfo, DeprecatedPackage } from '../types';
+import type { FetchFailure, PackageInfo, DeprecatedPackage } from '../types';
 
 /**
  * Colors the age based on how old the release is.
@@ -153,5 +153,25 @@ export function renderDeprecated(packages: DeprecatedPackage[]): void {
     );
   }
 
+  console.log('');
+}
+
+export function renderFetchFailures(failures: FetchFailure[]): void {
+  if (failures.length === 0) return;
+
+  console.log(pc.yellow(`\n  Could not check ${failures.length} package${failures.length === 1 ? '' : 's'}:`));
+  for (const failure of failures) {
+    console.log(`    ${pc.bold(failure.packageName)} — ${failure.message}`);
+  }
+  console.log('');
+}
+
+export function renderStaleCache(packages: string[]): void {
+  if (packages.length === 0) return;
+
+  console.log(pc.yellow(`\n  Using cached metadata for ${packages.length} package${packages.length === 1 ? '' : 's'}:`));
+  for (const packageName of packages) {
+    console.log(`    ${pc.bold(packageName)}`);
+  }
   console.log('');
 }

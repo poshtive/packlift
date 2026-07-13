@@ -24,9 +24,9 @@ const fetchAllPackagesNoCache = (
 
 const TEST_CACHE_DIR = path.join(
   os.tmpdir(),
-  `comze-fetcher-test-${Math.random().toString(36).slice(2)}`,
+  `packlift-fetcher-test-${Math.random().toString(36).slice(2)}`,
 );
-process.env.COMZE_CACHE_DIR = TEST_CACHE_DIR;
+process.env.PACKLIFT_CACHE_DIR = TEST_CACHE_DIR;
 
 describe('fetchPackage', () => {
   const originalFetch = globalThis.fetch;

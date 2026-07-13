@@ -25,7 +25,7 @@ describe('run', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(path.join(os.tmpdir(), 'comze-run-'));
+    tempDir = await mkdtemp(path.join(os.tmpdir(), 'packlift-run-'));
     process.chdir(tempDir);
   });
 

@@ -3,7 +3,7 @@ import { run } from './index';
 import type { CLIOptions } from './types';
 import pkg from '../package.json';
 
-const cli = cac('comze');
+const cli = cac('packlift');
 
 cli
   .option('-w, --write', 'Write changes to composer.json', { default: false })
@@ -14,7 +14,7 @@ cli
   .option('--major', 'Include major updates', { default: false })
   .option('--minor', 'Include minor updates', { default: true })
   .option('--patch', 'Include patch updates', { default: true })
-  .option('--exclude <packages>', 'Exclude packages (comma-separated, merged with composer.json extra.comze.exclude)', {
+  .option('--exclude <packages>', 'Exclude packages (comma-separated, merged with composer.json extra.packlift.exclude)', {
     default: '',
   })
   .option('--dry-run', 'Run without making changes', { default: false })

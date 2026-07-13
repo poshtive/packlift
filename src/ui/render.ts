@@ -88,14 +88,14 @@ export function renderTable(packages: PackageInfo[]): void {
 
 export function renderHeader(version: string): void {
   console.log('');
-  console.log(pc.bold(`  comze v${version}`), pc.gray(' —  Check for updates for composer.json'));
+  console.log(pc.bold(`  packlift v${version}`), pc.gray(' —  Check for updates for composer.json'));
   console.log('');
 }
 
 export function renderFooter(hasUpdates: boolean): void {
   if (hasUpdates) {
-    console.log(pc.gray('  Run "comze -w" to write to composer.json'));
-    console.log(pc.gray('  Run "comze -i" to write and install'));
+    console.log(pc.gray('  Run "packlift -w" to write to composer.json'));
+    console.log(pc.gray('  Run "packlift -i" to write and install'));
     console.log('');
   }
 }

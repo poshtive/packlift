@@ -41,13 +41,13 @@ export interface CLIOptions {
   noCache: boolean;
 }
 
-export interface ComzeConfig {
+export interface PackliftConfig {
   exclude?: string[];
   [key: string]: unknown;
 }
 
 export interface ComposerExtra {
-  comze?: ComzeConfig;
+  packlift?: PackliftConfig;
   [key: string]: unknown;
 }
 

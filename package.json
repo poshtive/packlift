@@ -1,6 +1,6 @@
 {
-  "name": "comze",
-  "version": "0.4.0",
+  "name": "packlift",
+  "version": "1.0.0",
   "description": "A taze-like CLI for updating composer.json dependencies",
   "author": "qoqn",
   "license": "MIT",
@@ -16,7 +16,7 @@
   "main": "./dist/cli.mjs",
   "module": "./dist/cli.mjs",
   "bin": {
-    "comze": "bin/comze.mjs"
+    "packlift": "bin/packlift.mjs"
   },
   "files": [
     "dist",
@@ -33,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/qoqn/comze.git"
+    "url": "git+https://github.com/qoqn/packlift.git"
   },
   "devDependencies": {
     "@types/bun": "latest",

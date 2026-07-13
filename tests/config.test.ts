@@ -10,7 +10,7 @@ describe('getComposerExcludeList', () => {
   test('returns excludes from composer extra config', () => {
     const composer: ComposerJson = {
       extra: {
-        comze: {
+        packlift: {
           exclude: ['vendor/package-a', ' vendor/package-b '],
         },
       },
@@ -26,7 +26,7 @@ describe('getComposerExcludeList', () => {
   test('returns empty array for invalid config shape', () => {
     const composer = {
       extra: {
-        comze: {
+        packlift: {
           exclude: 'vendor/package-a',
         },
       },

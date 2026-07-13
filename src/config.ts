@@ -5,7 +5,7 @@ function normalizeExcludeList(excludes: string[]): string[] {
 }
 
 export function getComposerExcludeList(composer: ComposerJson): string[] {
-  const excludes = composer.extra?.comze?.exclude;
+  const excludes = composer.extra?.packlift?.exclude;
   if (!Array.isArray(excludes)) return [];
 
   const validExcludes = excludes.filter((value): value is string => typeof value === 'string');

@@ -7,10 +7,10 @@ import { getCacheEntry, setCache, touchCache } from '../src/cache';
 const TEST_CACHE_KEY = 'test_key';
 const TEST_CACHE_DIR = path.join(
   os.tmpdir(),
-  `comze-test-cache-${Math.random().toString(36).slice(2)}`,
+  `packlift-test-cache-${Math.random().toString(36).slice(2)}`,
 );
 
-process.env.COMZE_CACHE_DIR = TEST_CACHE_DIR;
+process.env.PACKLIFT_CACHE_DIR = TEST_CACHE_DIR;
 
 describe('Cache', () => {
   test('can write and read cache', async () => {

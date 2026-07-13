@@ -1,4 +1,4 @@
-# comze
+# packlift
 
 A [taze](https://github.com/antfu/taze)-like CLI for updating `composer.json` dependencies.
 
@@ -16,40 +16,40 @@ A [taze](https://github.com/antfu/taze)-like CLI for updating `composer.json` de
 
 ```bash
 # Global install
-npm install -g comze
+npm install -g packlift
 
 # Or use directly with npx/bunx/pnpx
-npx comze
-bunx comze
-pnpx comze
+npx packlift
+bunx packlift
+pnpx packlift
 ```
 
 ## Usage
 
 ```bash
 # Check for updates
-comze
+packlift
 
 # Include major updates
-comze --major
+packlift --major
 
 # Write changes to composer.json
-comze -w
+packlift -w
 
 # Write + run composer update
-comze -i
+packlift -i
 
 # Interactive mode
-comze -I
+packlift -I
 
 # Dry run
-comze --dry-run
+packlift --dry-run
 
 # Exclude packages
-comze --exclude vendor/package
+packlift --exclude vendor/package
 
 # Exclude multiple packages
-comze --exclude vendor/package-a,vendor/package-b
+packlift --exclude vendor/package-a,vendor/package-b
 ```
 
 ## Options
@@ -62,17 +62,17 @@ comze --exclude vendor/package-a,vendor/package-b
 | `--major`           | Include major updates (default: false)  |
 | `--minor`           | Include minor updates (default: true)   |
 | `--patch`           | Include patch updates (default: true)   |
-| `--exclude <pkgs>`  | Exclude packages (comma-separated, merged with `extra.comze.exclude`) |
+| `--exclude <pkgs>`  | Exclude packages (comma-separated, merged with `extra.packlift.exclude`) |
 | `--dry-run`         | Preview changes without writing         |
 
 ## Persistent Excludes
 
-For packages that should always be ignored, store them in `composer.json` under `extra.comze.exclude`:
+For packages that should always be ignored, store them in `composer.json` under `extra.packlift.exclude`:
 
 ```json
 {
   "extra": {
-    "comze": {
+    "packlift": {
       "exclude": [
         "vendor/package-a",
         "vendor/package-b"
@@ -82,11 +82,11 @@ For packages that should always be ignored, store them in `composer.json` under 
 }
 ```
 
-`comze` merges this list with `--exclude`, so the flag remains useful for one-off runs while the file keeps repository-wide defaults.
+`packlift` merges this list with `--exclude`, so the flag remains useful for one-off runs while the file keeps repository-wide defaults.
 
 ## Composer Stability
 
-comze reads `minimum-stability` and `prefer-stable` from your `composer.json`:
+packlift reads `minimum-stability` and `prefer-stable` from your `composer.json`:
 
 ```json
 {

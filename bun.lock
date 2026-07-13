@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "comze",
+      "name": "packlift",
       "dependencies": {
         "cac": "^7.0.0",
         "detect-indent": "^7.0.2",

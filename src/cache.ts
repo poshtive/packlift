@@ -5,7 +5,7 @@ import os from 'node:os';
 function getCacheDir(): string {
   const home = os.homedir();
   const platform = os.platform();
-  const overrideDir = process.env.COMZE_CACHE_DIR?.trim();
+  const overrideDir = process.env.PACKLIFT_CACHE_DIR?.trim();
 
   if (overrideDir) {
     return overrideDir;
@@ -14,16 +14,16 @@ function getCacheDir(): string {
   if (platform === 'win32') {
     return path.join(
       process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'),
-      'comze',
+      'packlift',
       'Cache',
     );
   }
 
   if (platform === 'darwin') {
-    return path.join(home, 'Library', 'Caches', 'comze');
+    return path.join(home, 'Library', 'Caches', 'packlift');
   }
 
-  return path.join(process.env.XDG_CACHE_HOME || path.join(home, '.cache'), 'comze');
+  return path.join(process.env.XDG_CACHE_HOME || path.join(home, '.cache'), 'packlift');
 }
 
 export interface CacheEntry<T> {

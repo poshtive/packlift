@@ -143,13 +143,13 @@ describe('writeComposerJson', () => {
     expect(newContent.includes('  "require"')).toBe(true);
   });
 
-  test('preserves extra.comze.exclude config', async () => {
+  test('preserves extra.packlift.exclude config', async () => {
     const content = {
       require: {
         'vendor/package': '^1.0',
       },
       extra: {
-        comze: {
+        packlift: {
           exclude: ['vendor/ignored-package'],
         },
       },
@@ -171,7 +171,7 @@ describe('writeComposerJson', () => {
     await writeComposerJson(TEST_COMPOSER, updates, false);
 
     const newContent = JSON.parse(await readFile(TEST_COMPOSER, 'utf-8'));
-    expect(newContent.extra.comze.exclude).toEqual(['vendor/ignored-package']);
+    expect(newContent.extra.packlift.exclude).toEqual(['vendor/ignored-package']);
   });
 
   test('dry run does not write file', async () => {

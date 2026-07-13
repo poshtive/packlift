@@ -81,6 +81,11 @@ describe('checkPhpCompatibility', () => {
     expect(result.satisfied).toBe(true);
   });
 
+  test('compatible when one project OR branch intersects the package range', () => {
+    const result = checkPhpCompatibility('^7.4 || ^8.2', '^8.0');
+    expect(result.satisfied).toBe(true);
+  });
+
   test('incompatible when project PHP is too high', () => {
     // ^8.5 min is 8.5, package ^8.0 allows 8.0-8.x, so 8.5 is compatible
     // Use a constraint that explicitly doesn't support 8.5

@@ -121,6 +121,32 @@ describe('writeComposerJson', () => {
     expect(newContent['require-dev']['vendor/dev-package']).toBe('~2.5.0');
   });
 
+  test('preserves OR constraint branches when writing', async () => {
+    const content = {
+      require: {
+        'vendor/package': '^1.0 || ^2.0',
+      },
+    };
+    await writeFile(TEST_COMPOSER, JSON.stringify(content, null, 4));
+
+    const updates: PackageInfo[] = [
+      {
+        name: 'vendor/package',
+        currentVersion: '^1.0 || ^2.0',
+        latestVersion: '2.5.0',
+        diffType: 'minor',
+        releaseTime: new Date().toISOString(),
+        age: '1 d',
+        ageMonths: 0,
+      },
+    ];
+
+    await writeComposerJson(TEST_COMPOSER, updates, false);
+
+    const newContent = JSON.parse(await readFile(TEST_COMPOSER, 'utf-8'));
+    expect(newContent.require['vendor/package']).toBe('^1.0 || ^2.5.0');
+  });
+
   test('preserves indentation', async () => {
     const content = '{\n  "require": {\n    "vendor/package": "^1.0"\n  }\n}';
     await writeFile(TEST_COMPOSER, content);

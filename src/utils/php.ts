@@ -1,31 +1,14 @@
 import semver from 'semver';
+import {
+  composerConstraintsIntersect,
+  normalizeComposerConstraint,
+} from './constraint';
+
+export { normalizeComposerConstraint } from './constraint';
 
 export interface ConstraintCheckResult {
   satisfied: boolean;
   reason?: string;
-}
-
-/**
- * Normalizes a Composer version constraint to a semver-compatible range.
- * Handles common patterns: ^8.0, >=7.2.5, ^7.0 || ^8.0, >=7.4 <8.4
- */
-export function normalizeComposerConstraint(constraint: string): string {
-  if (!constraint) return '*';
-
-  let normalized = constraint.trim();
-
-  normalized = normalized.replace(/\|\|/g, '<<<OR>>>');
-  normalized = normalized.replace(/\|/g, '<<<OR>>>');
-  normalized = normalized.replace(/<<<OR>>>/g, ' || ');
-  normalized = normalized.replace(/\s*\|\|\s*/g, ' || ');
-  normalized = normalized.replace(/,\s*/g, ' ');
-  normalized = normalized.replace(/@(dev|alpha|beta|rc|stable)/gi, '');
-
-  if (normalized === '*' || normalized.startsWith('ext-')) {
-    return '*';
-  }
-
-  return normalized;
 }
 
 /**
@@ -87,6 +70,13 @@ export function checkPhpCompatibility(
 ): ConstraintCheckResult {
   if (!packagePhp || packagePhp === '*') return { satisfied: true };
   if (!projectPhp) return { satisfied: true };
+
+  const intersection = composerConstraintsIntersect(projectPhp, packagePhp);
+  if (intersection !== null) {
+    return intersection
+      ? { satisfied: true }
+      : { satisfied: false, reason: `requires php ${packagePhp}` };
+  }
 
   const projectMin = extractMinVersion(projectPhp);
   if (!projectMin) return { satisfied: true };

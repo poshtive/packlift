@@ -6,9 +6,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
+### Fixed
 
-- Keep future changes and upcoming improvements here.
+- Preserve Composer OR branches, wildcard shape, and stability flags when rewriting constraints (#1).
+- Evaluate PHP compatibility across intersecting Composer constraint branches instead of relying on one scalar minimum (#1).
 
 ## [1.0.0] - 2026-07-13
 

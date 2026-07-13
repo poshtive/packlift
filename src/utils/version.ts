@@ -1,6 +1,10 @@
 import semver from 'semver';
 import type { Stability } from '../types';
 import { STABILITY_ORDER } from '../types';
+import {
+  composerBranchIncludesVersion,
+  splitRawComposerConstraint,
+} from './constraint';
 
 export type ConstraintType = 'exact' | 'range' | 'hyphen' | 'wildcard' | 'tilde' | 'caret' | 'dev';
 
@@ -185,6 +189,17 @@ export function meetsStabilityRequirement(
  * Returns null for dev versions that cannot be compared.
  */
 export function normalizeVersion(version: string): string | null {
+  const branches = splitRawComposerConstraint(version);
+  const normalizedBranches = branches
+    .map((branch) => normalizeSingleVersion(branch))
+    .filter((value): value is string => value !== null);
+
+  if (normalizedBranches.length === 0) return null;
+
+  return normalizedBranches.sort((left, right) => semver.rcompare(left, right))[0] ?? null;
+}
+
+function normalizeSingleVersion(version: string): string | null {
   const parsed = parseConstraint(version);
 
   if (parsed.type === 'dev' && !version.includes(' as ')) {
@@ -228,7 +243,37 @@ export function getDiffType(
  * formatNewVersion('~1.2', '1.3.0')  // '~1.3.0'
  */
 export function formatNewVersion(originalConstraint: string, newVersion: string): string {
-  const parsed = parseConstraint(originalConstraint);
+  const branches = splitRawComposerConstraint(originalConstraint);
+
+  if (branches.length > 1) {
+    const normalizedNewVersion = newVersion.replace(/^v/i, '');
+    const matchingBranches = branches.filter((branch) =>
+      composerBranchIncludesVersion(branch, normalizedNewVersion),
+    );
+    const candidates = matchingBranches.length > 0 ? matchingBranches : branches;
+
+    const selectedBranch = candidates.reduce((selected, branch) => {
+      const selectedVersion = normalizeSingleVersion(selected);
+      const branchVersion = normalizeSingleVersion(branch);
+
+      if (!selectedVersion) return branch;
+      if (!branchVersion) return selected;
+      return semver.gt(branchVersion, selectedVersion) ? branch : selected;
+    }, candidates[0] ?? branches[0] ?? originalConstraint);
+
+    const separator = originalConstraint.includes('||') ? ' || ' : ' | ';
+    return branches
+      .map((branch) => (branch === selectedBranch ? formatConstraintBranch(branch, newVersion) : branch))
+      .join(separator);
+  }
+
+  return formatConstraintBranch(originalConstraint, newVersion);
+}
+
+function formatConstraintBranch(originalConstraint: string, newVersion: string): string {
+  const stabilitySuffix = originalConstraint.match(/(@(?:dev|alpha|beta|rc|stable))\s*$/i)?.[1] ?? '';
+  const constraintWithoutSuffix = originalConstraint.replace(/\s*@(?:dev|alpha|beta|rc|stable)\s*$/i, '').trim();
+  const parsed = parseConstraint(constraintWithoutSuffix);
   const cleaned = newVersion.replace(/^v/i, '');
 
   if (parsed.type === 'dev') {
@@ -236,30 +281,37 @@ export function formatNewVersion(originalConstraint: string, newVersion: string)
   }
 
   if (parsed.type === 'wildcard') {
+    if (constraintWithoutSuffix === '*') {
+      return originalConstraint;
+    }
+
     const coerced = semver.coerce(cleaned);
     if (coerced) {
       const major = semver.major(coerced.version);
       const minor = semver.minor(coerced.version);
-      if (originalConstraint.match(/^\d+\.\*$/)) {
-        return `${major}.*`;
+      if (constraintWithoutSuffix.match(/^\d+\.\*$/)) {
+        return `${major}.*${stabilitySuffix}`;
       }
-      return `${major}.${minor}.*`;
+      if (constraintWithoutSuffix.match(/^\d+\.\*\.\*$/)) {
+        return `${major}.*.*${stabilitySuffix}`;
+      }
+      return `${major}.${minor}.*${stabilitySuffix}`;
     }
     return originalConstraint;
   }
 
   if (parsed.type === 'hyphen') {
-    const startPart = (originalConstraint.split(' - ')[0] ?? '').trim();
-    return `${startPart} - ${cleaned}`;
+    const startPart = (constraintWithoutSuffix.split(' - ')[0] ?? '').trim();
+    return `${startPart} - ${cleaned}${stabilitySuffix}`;
   }
 
   if (parsed.type === 'range') {
-    const updatedConstraint = originalConstraint.replace(
+    const updatedConstraint = constraintWithoutSuffix.replace(
       /([><!=]+\s*)v?\d+(?:\.\d+)*(?:-[\w.]+)?/i,
       `$1${cleaned}`,
     );
-    return updatedConstraint || originalConstraint;
+    return updatedConstraint ? `${updatedConstraint}${stabilitySuffix}` : originalConstraint;
   }
 
-  return `${parsed.prefix}${cleaned}`;
+  return `${parsed.prefix}${cleaned}${stabilitySuffix}`;
 }

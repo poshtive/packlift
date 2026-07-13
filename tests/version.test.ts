@@ -296,11 +296,23 @@ describe('getDiffType', () => {
   test('handles tilde constraint', () => {
     expect(getDiffType('~1.2', '1.3.0')).toBe('minor');
   });
+
+  test('uses the matching branch for an OR constraint', () => {
+    expect(getDiffType('^1.0 || ^2.0', '2.5.0')).toBe('minor');
+  });
 });
 
 describe('formatNewVersion', () => {
   test('preserves caret prefix', () => {
     expect(formatNewVersion('^1.0', '1.5.0')).toBe('^1.5.0');
+  });
+
+  test('preserves OR branches while updating the matching branch', () => {
+    expect(formatNewVersion('^1.0 || ^2.0', '2.5.0')).toBe('^1.0 || ^2.5.0');
+  });
+
+  test('preserves a single-pipe OR separator', () => {
+    expect(formatNewVersion('~1.0 | ~2.0', '2.5.0')).toBe('~1.0 | ~2.5.0');
   });
 
   test('preserves tilde prefix', () => {
@@ -321,6 +333,18 @@ describe('formatNewVersion', () => {
 
   test('updates major wildcard constraint', () => {
     expect(formatNewVersion('1.*', '2.3.0')).toBe('2.*');
+  });
+
+  test('preserves multi-segment wildcard shape', () => {
+    expect(formatNewVersion('1.*.*', '2.3.0')).toBe('2.*.*');
+  });
+
+  test('preserves an unrestricted wildcard', () => {
+    expect(formatNewVersion('*', '2.3.0')).toBe('*');
+  });
+
+  test('preserves stability flags', () => {
+    expect(formatNewVersion('^1.0@stable', '1.5.0')).toBe('^1.5.0@stable');
   });
 
   test('preserves range constraint shape', () => {

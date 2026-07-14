@@ -1,0 +1,25 @@
+default:
+  image:
+    name: oven/bun:latest
+    entrypoint: [""]
+  cache:
+    key:
+      files:
+        - package.json
+        - bun.lock
+    paths:
+      - .bun-cache/
+    policy: pull-push
+  before_script:
+    - bun --version
+    - bun install --frozen-lockfile --cache-dir .bun-cache
+
+stages:
+  - test
+
+test:
+  stage: test
+  script:
+    - bun run typecheck
+    - bun test
+    - bun run build
